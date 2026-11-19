@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mobilný zvonček</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 80px 20px;
+      background: #f5f5f5;
+    }
+
+    button {
+      padding: 16px 24px;
+      font-size: 18px;
+      cursor: pointer;
+      border: none;
+      border-radius: 10px;
+      background: #222;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+  <h1>Mobilný zvonček</h1>
+  <p id="status">Najprv aktivuj senzor.</p>
+
+  <button id="start">Aktivovať zvonček</button>
+
+  <p>Po aktivácii zatras mobilom.</p>
+  <p>Počet zazvonení: <span id="count">0</span></p>
+
+  <script>
+    const startButton = document.getElementById("start");
+    const status = document.getElementById("status");
+    const counter = document.getElementById("count");
+
+    let audioContext;
+    let previous = null;
+    let lastShake = 0;
+    let rings = 0;
+
+    function ringBell() {
+      const now = audioContext.currentTime;
+
+      // Vytvorenie zvuku zvončeka
+      for (const frequency of [880, 1760, 2640]) {
+        const oscillator = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+
+        oscillator.type = "sine";
+        oscillator.frequency.value = frequency;
+
+        gain.gain.setValueAtTime(0.15, now);
+        gain.gain.exponentialRampToValueAtTime(
+          0.001, now + 1.2
+        );
+
+        oscillator.connect(gain);
+        gain.connect(audioContext.destination);
+
+        oscillator.start(now);
+        oscillator.stop(now + 1.2);
+      }
+
+      rings++;
+      counter.textContent = rings;
+      status.textContent = "Cŕŕŕn! Zatras znova.";
+    }
+
+    function onMotion(event) {
+      const a = event.accelerationIncludingGravity;
+      if (!a || a.x === null || a.y === null || a.z === null) {
+        return;
+      }
+
+      const current = { x: a.x, y: a.y, z: a.z };
+
+      if (previous) {
+        const movement = Math.hypot(
+          current.x - previous.x,
+          current.y - previous.y,
+          current.z - previous.z
+        );
+
+        // Detekcia zatrasenia
+        if (movement > 13 && Date.now() - lastShake > 900) {
+          lastShake = Date.now();
+          ringBell();
+        }
+      }
+
+      previous = current;
+    }
+
+    startButton.addEventListener("click", async () => {
+      try {
+        if (!window.DeviceMotionEvent) {
+          status.textContent = "Senzor nie je podporovaný.";
+          return;
+        }
+
+        audioContext = new (
+          window.AudioContext || window.webkitAudioContext
+        )();
+
+        // Obe požiadavky spustiť po kliknutí
+        const audioReady = audioContext.resume();
+
+        const permission = typeof DeviceMotionEvent.requestPermission
+          === "function"
+          ? DeviceMotionEvent.requestPermission()
+          : Promise.resolve("granted");
+
+        const result = await permission;
+        await audioReady;
+
+        if (result !== "granted") {
+          status.textContent = "Prístup k pohybu zamietnutý.";
+          return;
+        }
+
+        window.addEventListener("devicemotion", onMotion);
+
+        status.textContent = "Aktívne! Zatras mobilom.";
+        startButton.disabled = true;
+      } catch (error) {
+        status.textContent = "Nepodarilo sa aktivovať senzor.";
+        console.error(error);
+      }
+    });
+  </script>
+</body>
+</html>
